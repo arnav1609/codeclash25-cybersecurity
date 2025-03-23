@@ -13,6 +13,8 @@ from sklearn.preprocessing import LabelEncoder
 from stable_baselines3 import PPO  
 from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans
+import sys
+import os
 
 # Fix NumPy compatibility issue
 if not hasattr(np, "bool8"):
@@ -79,6 +81,16 @@ def plot_intrusion_levels():
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=times, y=intrusion_levels, mode="lines+markers", name="Intrusion Level"))
             print("🔄 Updating intrusion level plot...")  
+@app.route("/predict_next_attack")
+def predict_next_attack():
+    attack_types = ["IoT Botnet", "Ransomware", "DDoS", "Malware", "Brute Force", "SQL Injection"]
+    predicted_attack = random.choice(attack_types)
+    predicted_severity = random.randint(30, 100)  # Simulate severity level
+
+    return jsonify({
+        "attack_type": predicted_attack,
+        "severity": predicted_severity
+    })            
 
 # Function to start plotting in a separate thread
 def start_plotting_thread():
@@ -145,13 +157,26 @@ def get_critical_alerts():
 def get_attack_locations():
     locations = [
         {
-            "latitude": entry["latitude"],
-            "longitude": entry["longitude"],
-            "attack_type": entry["attack_type"]
+            "latitude": entry.get("latitude", 0),  # Ensure default values
+            "longitude": entry.get("longitude", 0),
+            "attack_type": entry.get("attack_type", "Unknown"),
+            "severity": entry.get("severity", 0)
         }
-        for entry in intrusion_data[-20:]
+        for entry in intrusion_data[-20:] if "latitude" in entry and "longitude" in entry
     ]
     return jsonify(locations)
+@app.route("/trigger_recovery", methods=["POST"])
+def trigger_recovery():
+    try:
+        # Restart Flask by relaunching the script
+        python = sys.executable  # Get Python executable path
+        os.execl(python, python, *sys.argv)  # Restart the app
+
+        return jsonify({"status": "success", "message": "Flask app is restarting!"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Recovery failed: {str(e)}"}), 500
+
+
 
 # Start intrusion monitoring thread
 def start_intrusion_monitoring():

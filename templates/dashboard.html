@@ -58,6 +58,9 @@
 
         <div id="chart"></div>
 
+        <h2>Predicted Next Attack</h2>
+        <div id="prediction-container"></div>
+
         <h2>Security Logs</h2>
         <div id="log-container"></div>
 
@@ -85,7 +88,50 @@
 
     <script>
         let attackMarkers = [];
+        function updateLogs() {
+            fetch("/logs")
+                .then(response => response.json())
+                .then(data => {
+                    let logContainer = document.getElementById("log-container");
+                    logContainer.innerHTML = "";
+                    data.forEach(log => {
+                        let logEntry = document.createElement("p");
+                        logEntry.innerHTML = `<span class="alert">[${log.level.toUpperCase()}]</span> ${log.message}`;
+                        logContainer.appendChild(logEntry);
+                    });
+                }).catch(error => console.error("Error updating logs:", error));
+        }
+        function rollbackChanges() {
+    fetch("/trigger_recovery", { method: "POST" })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message); // Show message from the server
+        console.log("Rollback Response:", data);
+    })
+    .catch(error => {
+        console.error("Error triggering rollback:", error);
+        alert("Rollback failed! Check console for details.");
+    });
+}
 
+        function updateThreatMonitoring() {
+            fetch("/intrusion_data")
+                .then(response => response.json())
+                .then(data => {
+                    let tableBody = document.querySelector("#dataset-table tbody");
+                    tableBody.innerHTML = "";
+                    data.forEach(entry => {
+                        let row = `<tr>
+                            <td>${new Date(entry.time * 1000).toLocaleTimeString()}</td>
+                            <td>${entry.attack_type}</td>
+                            <td>${entry.threat_type}</td>
+                            <td>${entry.severity}</td>
+                            <td>${entry.firewall_rule}</td>
+                        </tr>`;
+                        tableBody.innerHTML += row;
+                    });
+                }).catch(error => console.error("Error updating Threat Monitoring:", error));
+        }
         function updateGraph() {
             fetch("/intrusion_data")
                 .then(response => response.json())
@@ -115,55 +161,61 @@
                 }).catch(error => console.error("Error updating graph:", error));
         }
 
-        function updateLogs() {
-            fetch("/logs")
+        function updatePrediction() {
+            fetch("/predict_next_attack")
                 .then(response => response.json())
                 .then(data => {
-                    let logContainer = document.getElementById("log-container");
-                    logContainer.innerHTML = "";
-                    data.forEach(log => {
-                        let logEntry = document.createElement("p");
-                        logEntry.innerHTML = `<span class="alert">[${log.level.toUpperCase()}]</span> ${log.message}`;
-                        logContainer.appendChild(logEntry);
-                    });
-                }).catch(error => console.error("Error updating logs:", error));
-        }
-
-        function updateThreatMonitoring() {
-            fetch("/intrusion_data")
-                .then(response => response.json())
-                .then(data => {
-                    let tableBody = document.querySelector("#dataset-table tbody");
-                    tableBody.innerHTML = "";
-                    data.forEach(entry => {
-                        let row = `<tr>
-                            <td>${new Date(entry.time * 1000).toLocaleTimeString()}</td>
-                            <td>${entry.attack_type}</td>
-                            <td>${entry.threat_type}</td>
-                            <td>${entry.severity}</td>
-                            <td>${entry.firewall_rule}</td>
-                        </tr>`;
-                        tableBody.innerHTML += row;
-                    });
-                }).catch(error => console.error("Error updating Threat Monitoring:", error));
+                    let color = data.severity >= 85 ? "red" : data.severity >= 60 ? "orange" : "yellow";
+                    document.getElementById("prediction-container").innerHTML =
+                        `<p style='color: ${color};'><b>Next Attack:</b> ${data.attack_type} | Severity: ${data.severity}</p>`;
+                }).catch(error => console.error("Error fetching predictions:", error));
         }
 
         function updateAttackLocations() {
-            fetch("/attack_locations")
-                .then(response => response.json())
-                .then(data => {
-                    attackMarkers.forEach(marker => map.removeLayer(marker));
-                    attackMarkers = [];
+    fetch("/attack_locations")
+        .then(response => response.json())
+        .then(data => {
+            if (!data || data.length === 0) {
+                console.warn("No attack data available");
+                return;
+            }
 
-                    data.forEach(attack => {
-                        let marker = L.marker([attack.latitude, attack.longitude]).addTo(map)
-                            .bindPopup(`<b>📍 Attacker Location:</b> ${attack.latitude}, ${attack.longitude}<br>
-                                        <b>⚠️ Attack Type:</b> ${attack.attack_type || "Unknown"}`);
+            setTimeout(() => {  // Delay threat display by 30 seconds
+                attackMarkers.forEach(marker => map.removeLayer(marker));
+                attackMarkers = [];
 
-                        attackMarkers.push(marker);
-                    });
-                }).catch(error => console.error("Error fetching attack locations:", error));
-        }
+                data.forEach(attack => {
+                    let severity = attack.severity !== undefined ? attack.severity : 0;
+                    let iconUrl;
+
+                    if (severity >= 85) {
+                        iconUrl = "https://maps.google.com/mapfiles/ms/icons/red-dot.png"; // Critical
+                    } else if (severity >= 60) {
+                        iconUrl = "https://maps.google.com/mapfiles/ms/icons/orange-dot.png"; // High
+                    } else {
+                        iconUrl = "https://maps.google.com/mapfiles/ms/icons/yellow-dot.png"; // Medium/Low
+                    }
+
+                    console.log(`Adding marker at ${attack.latitude}, ${attack.longitude} - ${attack.attack_type} (Severity: ${severity})`);
+
+                    let marker = L.marker([attack.latitude, attack.longitude], {
+                        icon: L.icon({
+                            iconUrl: iconUrl,
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 32],
+                            popupAnchor: [0, -32]
+                        })
+                    }).addTo(map)
+                    .bindPopup(`<b>📍 Attacker Location:</b> ${attack.latitude}, ${attack.longitude}<br>
+                                <b>⚠️ Attack Type:</b> ${attack.attack_type}<br>
+                                <b>🔥 Severity:</b> ${severity}`);
+
+                    attackMarkers.push(marker);
+                });
+            }, 30000); // 30-second delay
+        })
+        .catch(error => console.error("Error fetching attack locations:", error));
+}
 
         let map = L.map('map').setView([20, 0], 2);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -171,14 +223,14 @@
         }).addTo(map);
 
         setInterval(updateGraph, 5000);
-        setInterval(updateLogs, 5000);
-        setInterval(updateThreatMonitoring, 5000);
+        setInterval(updatePrediction, 5000);
         setInterval(updateAttackLocations, 5000);
 
         updateGraph();
+        updatePrediction();
+        updateAttackLocations();
         updateLogs();
         updateThreatMonitoring();
-        updateAttackLocations();
     </script>
 </body>
 </html>
