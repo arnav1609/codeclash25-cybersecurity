@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI-Powered Intrusion Detection</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: white;
+            text-align: center;
+            margin: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 15px rgba(0, 255, 0, 0.5);
+        }
+        h1 {
+            color: #00ff00;
+        }
+        #log-container, #dataset-container, #honeypot-container {
+            text-align: left;
+            background: #333;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #444;
+        }
+        th {
+            background-color: #444;
+        }
+        select {
+            padding: 5px;
+            font-size: 16px;
+            margin-bottom: 10px;
+            background: #222;
+            color: white;
+            border-radius: 5px;
+            border: 1px solid #00ff00;
+        }
+        button {
+            background: red;
+            color: white;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        button:hover {
+            background: darkred;
+        }
+        #map {
+            height: 400px;
+            margin-top: 20px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 AI-Powered Intrusion Detection 🚨</h1>
+
+        <label for="graph-type">Select Graph Type:</label>
+        <select id="graph-type" onchange="updateGraph()">
+            <option value="scatter">Scatter Plot</option>
+            <option value="line">Line Chart</option>
+            <option value="bar">Bar Graph</option>
+        </select>
+
+        <div id="chart"></div>
+
+        <h2>Security Logs</h2>
+        <div id="log-container"></div>
+
+        <h2>Threat Monitoring</h2>
+        <div id="dataset-container">
+            <table id="dataset-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Attack Type</th>
+                        <th>Threat Type</th>
+                        <th>Severity</th>
+                        <th>Firewall Rule</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <h2>Attack Geolocation</h2>
+        <div id="map"></div>
+
+        <h2>🕵️ Honeypot Trap Logs</h2>
+        <div id="honeypot-container"></div>
+
+        <button onclick="rollbackChanges()">⏪ Rollback Changes</button>
+    </div>
+
+    <script>
+        let attackMarkers = [];
+
+        function updateGraph() {
+            let graphType = document.getElementById("graph-type").value;
+
+            fetch("/intrusion_data")
+                .then(response => response.json())
+                .then(data => {
+                    let times = data.map(d => new Date(d.time * 1000).toLocaleTimeString());
+                    let intrusion_levels = data.map(d => d.severity);
+
+                    let trace = {
+                        x: times,
+                        y: intrusion_levels,
+                        type: graphType,
+                        mode: graphType === 'scatter' ? 'markers' : 'lines+markers',
+                        line: { color: '#00ff00', width: 2 },
+                        marker: { color: '#ff4444', size: 6 }
+                    };
+
+                    let layout = {
+                        title: 'Real-Time Threat Graph',
+                        xaxis: { title: 'Time' },
+                        yaxis: { title: 'Threat Severity', range: [0, 100] },
+                        paper_bgcolor: '#1e1e1e',
+                        plot_bgcolor: '#1e1e1e',
+                        font: { color: 'white' }
+                    };
+
+                    Plotly.react('chart', [trace], layout);
+                });
+        }
+
+        function updateLogs() {
+            fetch("/logs")
+                .then(response => response.json())
+                .then(data => {
+                    let logContainer = document.getElementById("log-container");
+                    logContainer.innerHTML = "";
+                    data.slice(-5).forEach(log => {
+                        let logEntry = document.createElement("p");
+                        logEntry.innerHTML = `<span class="alert">[${log.level.toUpperCase()}]</span> ${log.message}`;
+                        logContainer.appendChild(logEntry);
+                    });
+                });
+        }
+
+        function updateHoneypotLogs() {
+            fetch("/honeypot_logs")
+                .then(response => response.json())
+                .then(data => {
+                    let honeypotContainer = document.getElementById("honeypot-container");
+                    honeypotContainer.innerHTML = "";
+                    data.forEach(log => {
+                        let logEntry = document.createElement("p");
+                        logEntry.innerHTML = `🚨 <b>Time:</b> ${log.time} - <b>Attacker IP:</b> ${log.attacker_ip} - <b>Status:</b> ${log.status}`;
+                        honeypotContainer.appendChild(logEntry);
+                    });
+                });
+        }
+
+        let map = L.map('map').setView([20, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        function updateAttackLocations() {
+            fetch("/attack_locations")
+                .then(response => response.json())
+                .then(data => {
+                    attackMarkers.forEach(marker => map.removeLayer(marker));
+                    attackMarkers = [];
+
+                    data.forEach(attack => {
+                        let marker = L.marker([attack.latitude, attack.longitude]).addTo(map)
+                            .bindPopup(`<b>📍 Attacker Location:</b> ${attack.latitude}, ${attack.longitude}<br>
+                                        <b>⚠️ Attack Type:</b> ${attack.attack_type || "Unknown"}<br>
+                                        <b>🚨 Threat Level:</b> ${attack.threat_type || "Not Classified"}`);
+
+                        attackMarkers.push(marker);
+                    });
+                })
+                .catch(error => console.error("Error fetching attack locations:", error));
+        }
+
+        setInterval(updateGraph, 3000);
+        setInterval(updateLogs, 3000);
+        setInterval(updateHoneypotLogs, 5000);
+        setInterval(updateAttackLocations, 5000);
+
+        updateGraph();
+        updateLogs();
+        updateHoneypotLogs();
+        updateAttackLocations();
+    </script>
+</body>
+</html>
