@@ -47,8 +47,6 @@ print("✅ Reinforcement Learning Model Initialized!")
 # Flask App
 app = Flask(__name__)
 logs, intrusion_data = [], []
-honeypot_logs = []
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Define log_message function
@@ -90,19 +88,6 @@ def start_plotting_thread():
 def restart_security_container():
     log_message("critical", "🔄 Restarting security container due to high-severity threat...")
     subprocess.run(["docker", "restart", "security_container"], check=True)
-def honeypot_trap(attacker_ip):
-    """Triggers honeypot and logs attacker details."""
-    log_message("critical", f"🎭 Honeypot activated! Attacker {attacker_ip} misled.")
-
-    honeypot_logs.append({
-        "time": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "attacker_ip": attacker_ip,
-        "status": "Trapped"
-    })
-
-    print("✅ Honeypot Log Updated:", honeypot_logs)  # Debugging output
-    return "Access Denied - Monitored by Honeypot"
-
 
 # Function to Simulate Attacks
 def detect_intrusion():
@@ -138,34 +123,11 @@ def detect_intrusion():
             secure_firmware_rollback()
             restart_security_container()
 
-# Predict Next Attack Location using AI
-@app.route("/predict_next_attack")
-def predict_next_attack():
-    if len(intrusion_data) < 10:
-        return jsonify({"error": "Not enough data to predict"}), 400
-
-    df = pd.DataFrame(intrusion_data)
-    
-    # K-Means Clustering for Hotspot Detection
-    kmeans = KMeans(n_clusters=2, random_state=42)
-    df["cluster"] = kmeans.fit_predict(df[["latitude", "longitude"]])
-
-    hotspot_cluster = df["cluster"].value_counts().idxmax()
-    hotspot_data = df[df["cluster"] == hotspot_cluster]
-
-    next_lat = hotspot_data["latitude"].mean()
-    next_long = hotspot_data["longitude"].mean()
-
-    print(f"🔮 Predicted Next Attack at: {next_lat}, {next_long}")  
-    return jsonify({"latitude": next_lat, "longitude": next_long})
-
 # Flask Routes
 @app.route("/")
 def dashboard():
     return render_template("dashboard.html")
-@app.route("/honeypot_logs")
-def get_honeypot_logs():
-    return jsonify(honeypot_logs[-10:])
+
 @app.route("/logs")
 def get_logs():
     return jsonify(logs[-10:])
